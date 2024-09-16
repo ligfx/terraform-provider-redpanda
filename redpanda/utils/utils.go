@@ -51,15 +51,24 @@ func IsNotFound(err error) bool {
 	return false
 }
 
+// CloudProviderStringAws is the string representation of the CLOUD_PROVIDER_AWS enum
+const CloudProviderStringAws = "aws"
+
+// CloudProviderStringAzure is the string representation of the CLOUD_PROVIDER_AZURE enum
+const CloudProviderStringAzure = "azure"
+
+// CloudProviderStringGcp is the string representation of the CLOUD_PROVIDER_GCP enum
+const CloudProviderStringGcp = "gcp"
+
 // StringToCloudProvider returns the controlplanev1beta2's CloudProvider code based on
 // the input string.
 func StringToCloudProvider(p string) (controlplanev1beta2.CloudProvider, error) {
 	switch strings.ToLower(p) {
-	case "aws":
+	case CloudProviderStringAws:
 		return controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_AWS, nil
-	case "gcp":
+	case CloudProviderStringGcp:
 		return controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_GCP, nil
-	case "azure":
+	case CloudProviderStringAzure:
 		return controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_AZURE, nil
 	default:
 		return controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_UNSPECIFIED, fmt.Errorf("provider %q not supported", p)
@@ -71,11 +80,11 @@ func StringToCloudProvider(p string) (controlplanev1beta2.CloudProvider, error) 
 func CloudProviderToString(provider controlplanev1beta2.CloudProvider) string {
 	switch provider {
 	case controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_AWS:
-		return "aws"
+		return CloudProviderStringAws
 	case controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_GCP:
-		return "gcp"
+		return CloudProviderStringGcp
 	case controlplanev1beta2.CloudProvider_CLOUD_PROVIDER_AZURE:
-		return "azure"
+		return CloudProviderStringAzure
 	default:
 		return providerUnspecified
 	}

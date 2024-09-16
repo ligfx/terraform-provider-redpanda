@@ -646,7 +646,7 @@ func (c *Cluster) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 			return utils.RetryableError(fmt.Errorf("expected cluster to be deleted but was in state %v", cluster.GetState()))
 		}
 
-		return utils.NonRetryableError(fmt.Errorf("unhandled state %v. please report this issue to the provider developers.", cluster.GetState()))
+		return utils.NonRetryableError(fmt.Errorf("unhandled state %v. please report this issue to the provider developers", cluster.GetState()))
 	})
 	if err != nil {
 		if utils.IsNotFound(err) {

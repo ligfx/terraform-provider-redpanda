@@ -50,24 +50,27 @@ func RunRpkByoc(ctx context.Context, clusterID, verb string, opts RpkByocOpts) e
 		"--redpanda-id", clusterID, "--debug",
 	}
 
-	if opts.CloudProvider == "azure" {
+	switch opts.CloudProvider {
+	case CloudProviderStringAws:
+		// pass
+	case CloudProviderStringAzure:
 		if opts.AzureSubscriptionID == "" {
 			return fmt.Errorf("azure_subscription_id must be set")
 		}
 		rpkArgs = append(rpkArgs, "--subscription-id", opts.AzureSubscriptionID)
-	} else if opts.CloudProvider == "gcp" {
+	case CloudProviderStringGcp:
 		if opts.GcpProjectID == "" {
 			return fmt.Errorf("gcp_project_id must be set")
 		}
 		rpkArgs = append(rpkArgs, "--project-id", opts.GcpProjectID)
-	} else if opts.CloudProvider != "aws" {
+	default:
 		return fmt.Errorf("unimplemented cloud provider %v. please report this issue to the provider developers", opts.CloudProvider)
 	}
 
-	return RunRpk(ctx, opts.RpkPath, rpkArgs...)
+	return runRpk(ctx, opts.RpkPath, rpkArgs...)
 }
 
-func RunRpk(ctx context.Context, rpkPath string, args ...string) error {
+func runRpk(ctx context.Context, rpkPath string, args ...string) error {
 	// TODO: avoid downloading things into user home directory?
 	// TODO: pass TF_LOG=JSON and parse message out?
 
