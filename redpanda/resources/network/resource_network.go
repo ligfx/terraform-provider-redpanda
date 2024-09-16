@@ -164,19 +164,15 @@ func (n *Network) Create(ctx context.Context, request resource.CreateRequest, re
 		return
 	}
 	op := netResp.Operation
-	var metadata controlplanev1beta2.CreateNetworkMetadata
-	if err := op.Metadata.UnmarshalTo(&metadata); err != nil {
-		response.Diagnostics.AddError("failed to unmarshal network metadata", err.Error())
-		return
-	}
-	if err := utils.AreWeDoneYet(ctx, op, 15*time.Minute, time.Second, n.CpCl.Operation); err != nil {
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), utils.TrimmedStringValue(op.GetResourceId()))...)
+
+	if err := utils.AreWeDoneYet(ctx, op, 15*time.Minute, 1*time.Second, n.CpCl.Operation); err != nil {
 		response.Diagnostics.AddError("failed waiting for network creation", err.Error())
 		return
 	}
-
 	response.Diagnostics.Append(response.State.Set(ctx, models.Network{
 		Name:            model.Name,
-		ID:              utils.TrimmedStringValue(metadata.GetNetworkId()),
+		ID:              utils.TrimmedStringValue(op.GetResourceId()),
 		CidrBlock:       model.CidrBlock,
 		Region:          model.Region,
 		ResourceGroupID: model.ResourceGroupID,

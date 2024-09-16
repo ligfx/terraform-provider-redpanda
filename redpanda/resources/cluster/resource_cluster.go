@@ -348,16 +348,16 @@ func (c *Cluster) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 	op := clResp.Operation
-	var metadata controlplanev1beta2.CreateClusterMetadata
-	if err := op.Metadata.UnmarshalTo(&metadata); err != nil {
-		resp.Diagnostics.AddError("failed to unmarshal cluster metadata", err.Error())
+	clusterId := op.GetResourceId()
+
+	// write initial state so that if cluster creation fails, we can still track and delete it
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), clusterId)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("allow_deletion"), true)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := utils.AreWeDoneYet(ctx, op, 60*time.Minute, time.Minute, c.CpCl.Operation); err != nil {
-		resp.Diagnostics.AddError("operation error while creating cluster", err.Error())
-		return
-	}
-	cluster, err := c.CpCl.ClusterForID(ctx, metadata.GetClusterId())
+
+	cluster, err := c.CpCl.ClusterForID(ctx, op.GetResourceId())
 	if err != nil {
 		resp.Diagnostics.AddError(fmt.Sprintf("successfully created the cluster with ID %q, but failed to read the cluster configuration: %v", model.ID.ValueString(), err), err.Error())
 		return
@@ -367,8 +367,15 @@ func (c *Cluster) Create(ctx context.Context, req resource.CreateRequest, resp *
 		resp.Diagnostics.AddError("failed to generate model for state during cluster.Create", err.Error())
 		return
 	}
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, persist)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := utils.AreWeDoneYet(ctx, op, 60*time.Minute, time.Minute, c.CpCl.Operation); err != nil {
+		resp.Diagnostics.AddError("operation error while creating cluster", err.Error())
+		return
+	}
 }
 
 // Read reads Cluster resource's values and updates the state.
