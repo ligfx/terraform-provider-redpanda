@@ -17,8 +17,11 @@ The Redpanda provider is designed for managing Redpanda clusters and Kafka resou
 
 ### Optional
 
+- `azure_subscription_id` (String) The default Azure Subscription ID which should be used for Redpanda BYOC clusters. If another subscription is specified on a resource, it will take precedence. This can also be sourced from the `ARM_SUBSCRIPTION_ID` environment variable.
 - `client_id` (String, Sensitive) The ID for the client. You need client_id AND client_secret to use this provider
 - `client_secret` (String, Sensitive) Redpanda client secret. You need client_id AND client_secret to use this provider
+- `gcp_project_id` (String) The default Google Cloud Project ID to use for Redpanda BYOC clusters. If another project is specified on a resource, it will take precedence. This can also be sourced from the `GOOGLE_PROJECT` environment variable, or any of the following ordered by precedence: `GOOGLE_PROJECT`, `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, or `CLOUDSDK_CORE_PROJECT`.
+- `rpk_path` (String) Path to the rpk binary. Used for creating and destroying Redpanda BYOC clusters. This can also be sourced from the `REDPANDA_RPK_PATH` environment variable.
 
 ## Authentication with Redpanda Cloud
 

@@ -308,5 +308,11 @@ func generateModel(ctx context.Context, cfg models.Cluster, cluster *controlplan
 			Mtls: sr,
 		}
 	}
+
+	// azure_subscription_id and gcp_project_id should never be stored as null,
+	// otherwise Terraform will think they constantly need to be updated
+	output.AzureSubscriptionID = types.StringValue(cfg.AzureSubscriptionID.ValueString())
+	output.GcpProjectID = types.StringValue(cfg.GcpProjectID.ValueString())
+
 	return output, nil
 }

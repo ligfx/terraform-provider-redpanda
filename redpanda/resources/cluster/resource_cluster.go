@@ -45,11 +45,17 @@ var (
 	_ resource.Resource                = &Cluster{}
 	_ resource.ResourceWithConfigure   = &Cluster{}
 	_ resource.ResourceWithImportState = &Cluster{}
+	_ resource.ResourceWithModifyPlan  = &Cluster{}
 )
 
 // Cluster represents a cluster managed resource.
 type Cluster struct {
-	CpCl *cloud.ControlPlaneClientSet
+	CpCl                       *cloud.ControlPlaneClientSet
+	ClientID                   string
+	ClientSecret               string
+	RpkPath                    string
+	DefaultAzureSubscriptionID string
+	DefaultGcpProjectID        string
 }
 
 // Metadata returns the full name of the Cluster resource.
@@ -73,6 +79,11 @@ func (c *Cluster) Configure(_ context.Context, req resource.ConfigureRequest, re
 	}
 
 	c.CpCl = cloud.NewControlPlaneClientSet(p.ControlPlaneConnection)
+	c.ClientID = p.ClientID
+	c.ClientSecret = p.ClientSecret
+	c.RpkPath = p.RpkPath
+	c.DefaultAzureSubscriptionID = p.AzureSubscriptionID
+	c.DefaultGcpProjectID = p.GcpProjectID
 }
 
 // Schema returns the schema for the Cluster resource.
@@ -322,8 +333,73 @@ func resourceClusterSchema() schema.Schema {
 				Optional:    true,
 				Description: "IDs of clusters which may create read-only topics from this cluster.",
 			},
+			"azure_subscription_id": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The Azure Subscription ID to use with a Redpanda BYOC cluster. If it is not provided, the provider Azure subscription id is used.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{validators.ByocCloudProviderDependentValidator{
+					AttributeName: "azure_subscription_id",
+					CloudProvider: "azure",
+				}},
+			},
+			"gcp_project_id": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The GCP Project ID to use with a Redpanda BYOC cluster. If it is not provided, the provider GCP project id is used.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					validators.ByocCloudProviderDependentValidator{
+						AttributeName: "gcp_project_id",
+						CloudProvider: "gcp",
+					},
+				},
+			},
 		},
 	}
+}
+
+// ModifyPlan uses provider level data to update the Cluster's plan.
+func (c *Cluster) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		// going to be destroyed
+		return
+	}
+
+	var config models.Cluster
+	var plan models.Cluster
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+
+	// default azure_subscription_id and gcp_project_id to the provider-level variables if they're
+	// not explicitly specified on the resource. do this here instead of a planmodifier because
+	// planmodifiers don't get access to the resource struct :/
+	// we check that the attribute is null on both the config, not the plan, because the attribute
+	// is marked as "computed" so the plan always thinks it's unknown
+	if plan.ClusterType.ValueString() == "byoc" && plan.CloudProvider.ValueString() == "azure" &&
+		req.State.Raw.IsNull() && config.AzureSubscriptionID.IsNull() {
+		if c.DefaultAzureSubscriptionID == "" {
+			resp.Diagnostics.AddError("required field azure_subscription_id must be set", "")
+			return
+		}
+		plan.AzureSubscriptionID = types.StringValue(c.DefaultAzureSubscriptionID)
+	}
+	if plan.ClusterType.ValueString() == "byoc" && plan.CloudProvider.ValueString() == "gcp" &&
+		req.State.Raw.IsNull() && config.GcpProjectID.IsNull() {
+		if c.DefaultGcpProjectID == "" {
+			resp.Diagnostics.AddError("required field gcp_project_id must be set", "")
+			return
+		}
+		plan.GcpProjectID = types.StringValue(c.DefaultGcpProjectID)
+	}
+
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, plan)...)
 }
 
 // Create creates a new Cluster resource. It updates the state if the resource
@@ -338,7 +414,8 @@ func (c *Cluster) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 
-	if err := utils.ValidateThroughputTier(ctx, c.CpCl.ThroughputTier, clusterReq.GetThroughputTier(), model.CloudProvider.ValueString(), "dedicated", clusterReq.GetRegion()); err != nil {
+	if err := utils.ValidateThroughputTier(ctx, c.CpCl.ThroughputTier, clusterReq.GetThroughputTier(), model.CloudProvider.ValueString(), model.ClusterType.ValueString(), clusterReq.GetRegion()); err != nil {
+		resp.Diagnostics.AddError("unable to validate throughput tier", err.Error())
 		return
 	}
 
@@ -353,13 +430,44 @@ func (c *Cluster) Create(ctx context.Context, req resource.CreateRequest, resp *
 	// write initial state so that if cluster creation fails, we can still track and delete it
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), clusterID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("allow_deletion"), true)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("azure_subscription_id"), model.AzureSubscriptionID.ValueString())...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("gcp_project_id"), model.GcpProjectID.ValueString())...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("cloud_provider"), model.CloudProvider)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	cluster, err := c.CpCl.ClusterForID(ctx, op.GetResourceId())
+	// wait for creation to complete, running "byoc apply" if we see STATE_CREATING_AGENT
+	cluster, err := utils.RetryGetCluster(ctx, 90*time.Minute, time.Minute, clusterID, c.CpCl, func(cluster *controlplanev1beta2.Cluster) *utils.RetryError {
+		if cluster.GetState() == controlplanev1beta2.Cluster_STATE_CREATING {
+			return utils.RetryableError(fmt.Errorf("expected cluster to be ready but was in state %v", cluster.GetState()))
+		}
+		if cluster.GetState() == controlplanev1beta2.Cluster_STATE_CREATING_AGENT {
+			if cluster.Type == controlplanev1beta2.Cluster_TYPE_BYOC {
+				err = utils.RunRpkByoc(ctx, clusterID, "apply", utils.RpkByocOpts{
+					ClientID:            c.ClientID,
+					ClientSecret:        c.ClientSecret,
+					CloudProvider:       model.CloudProvider.ValueString(),
+					RpkPath:             c.RpkPath,
+					AzureSubscriptionID: model.AzureSubscriptionID.ValueString(),
+					GcpProjectID:        model.GcpProjectID.ValueString(),
+				})
+				if err != nil {
+					return utils.NonRetryableError(err)
+				}
+			}
+			return utils.RetryableError(fmt.Errorf("expected cluster to be ready but was in state %v", cluster.GetState()))
+		}
+		if cluster.GetState() == controlplanev1beta2.Cluster_STATE_READY {
+			return nil
+		}
+		if cluster.GetState() == controlplanev1beta2.Cluster_STATE_FAILED {
+			return utils.NonRetryableError(fmt.Errorf("expected cluster to be ready but was in state %v", cluster.GetState()))
+		}
+		return utils.NonRetryableError(fmt.Errorf("unhandled state %v. please report this issue to the provider developers", cluster.GetState()))
+	})
 	if err != nil {
-		resp.Diagnostics.AddError(fmt.Sprintf("successfully created the cluster with ID %q, but failed to read the cluster configuration: %v", model.ID.ValueString(), err), err.Error())
+		resp.Diagnostics.AddError(fmt.Sprintf("failed to create cluster with ID %q", clusterID), err.Error())
 		return
 	}
 	persist, err := generateModel(ctx, model, cluster)
@@ -369,11 +477,6 @@ func (c *Cluster) Create(ctx context.Context, req resource.CreateRequest, resp *
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, persist)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if err := utils.AreWeDoneYet(ctx, op, 60*time.Minute, time.Minute, c.CpCl.Operation); err != nil {
-		resp.Diagnostics.AddError("operation error while creating cluster", err.Error())
 		return
 	}
 }
@@ -498,17 +601,58 @@ func (c *Cluster) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 		return
 	}
 
-
-	clResp, err := c.CpCl.Cluster.DeleteCluster(ctx, &controlplanev1beta2.DeleteClusterRequest{
-		Id: model.ID.ValueString(),
-	})
+	clusterID := model.ID.ValueString()
+	cluster, err := c.CpCl.ClusterForID(ctx, clusterID)
 	if err != nil {
-		resp.Diagnostics.AddError("failed to delete cluster", err.Error())
+		if utils.IsNotFound(err) {
+			return
+		}
+		resp.Diagnostics.AddError(fmt.Sprintf("failed to read cluster %s", model.ID), err.Error())
 		return
 	}
 
-	if err := utils.AreWeDoneYet(ctx, clResp.Operation, 90*time.Minute, time.Minute, c.CpCl.Operation); err != nil {
-		resp.Diagnostics.AddError("failed to delete cluster", err.Error())
+	// call Delete on the cluser, if it's not already in progress. calling Delete on a cluster in
+	// STATE_DELETING_AGENT seems to destroy it immediately and we don't want to do that if we haven't
+	// cleaned up yet
+	if !(cluster.GetState() == controlplanev1beta2.Cluster_STATE_DELETING || cluster.GetState() == controlplanev1beta2.Cluster_STATE_DELETING_AGENT) {
+		_, err = c.CpCl.Cluster.DeleteCluster(ctx, &controlplanev1beta2.DeleteClusterRequest{
+			Id: clusterID,
+		})
+		if err != nil {
+			resp.Diagnostics.AddError("failed to delete cluster", err.Error())
+			return
+		}
+	}
+
+	// wait for creation to complete, running "byoc apply" if we see STATE_DELETING_AGENT
+	_, err = utils.RetryGetCluster(ctx, 90*time.Minute, time.Minute, clusterID, c.CpCl, func(cluster *controlplanev1beta2.Cluster) *utils.RetryError {
+		if cluster.GetState() == controlplanev1beta2.Cluster_STATE_DELETING {
+			return utils.RetryableError(fmt.Errorf("expected cluster to be deleted but was in state %v", cluster.GetState()))
+		}
+		if cluster.GetState() == controlplanev1beta2.Cluster_STATE_DELETING_AGENT {
+			if cluster.Type == controlplanev1beta2.Cluster_TYPE_BYOC {
+				err = utils.RunRpkByoc(ctx, clusterID, "destroy", utils.RpkByocOpts{
+					ClientID:            c.ClientID,
+					ClientSecret:        c.ClientSecret,
+					CloudProvider:       model.CloudProvider.ValueString(),
+					RpkPath:             c.RpkPath,
+					AzureSubscriptionID: model.AzureSubscriptionID.ValueString(),
+					GcpProjectID:        model.GcpProjectID.ValueString(),
+				})
+				if err != nil {
+					return utils.NonRetryableError(err)
+				}
+			}
+			return utils.RetryableError(fmt.Errorf("expected cluster to be deleted but was in state %v", cluster.GetState()))
+		}
+
+		return utils.NonRetryableError(fmt.Errorf("unhandled state %v. please report this issue to the provider developers.", cluster.GetState()))
+	})
+	if err != nil {
+		if utils.IsNotFound(err) {
+			return
+		}
+		resp.Diagnostics.AddError(fmt.Sprintf("failed to delete cluster %s", model.ID), err.Error())
 		return
 	}
 }

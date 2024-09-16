@@ -36,6 +36,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	rpknet "github.com/redpanda-data/redpanda/src/go/rpk/pkg/net"
+	"github.com/redpanda-data/terraform-provider-redpanda/redpanda/cloud"
 	"google.golang.org/grpc"
 )
 
@@ -341,6 +342,27 @@ func SplitSchemeDefPort(url, def string) (string, error) {
 		port = def
 	}
 	return host + ":" + port, nil
+}
+
+// RetryGetCluster will retry a function, passing in the latest state of the given cluster id, until
+// it either no longer returns an error or times out
+func RetryGetCluster(ctx context.Context, timeout, waitUnit time.Duration, clusterID string, client *cloud.ControlPlaneClientSet, f func(*controlplanev1beta2.Cluster) *RetryError) (*controlplanev1beta2.Cluster, error) {
+	var cluster *controlplanev1beta2.Cluster
+	err := Retry(ctx, timeout, waitUnit, func() *RetryError {
+		var err error
+		cluster, err = client.ClusterForID(ctx, clusterID)
+		if err != nil {
+			if IsNotFound(err) {
+				tflog.Info(ctx, fmt.Sprintf("cluster %q not found", clusterID))
+				cluster = nil
+				return nil
+			}
+			return NonRetryableError(err)
+		}
+		tflog.Info(ctx, fmt.Sprintf("cluster %v : %v", clusterID, cluster.GetState()))
+		return f(cluster)
+	})
+	return cluster, err
 }
 
 // TypeMapToStringMap converts a types.Map to a map[string]string

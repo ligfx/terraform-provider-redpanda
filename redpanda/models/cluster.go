@@ -42,6 +42,8 @@ type Cluster struct {
 	HTTPProxy                *HTTPProxy                `tfsdk:"http_proxy"`
 	SchemaRegistry           *SchemaRegistry           `tfsdk:"schema_registry"`
 	ReadReplicaClusterIDs    types.List                `tfsdk:"read_replica_cluster_ids"`
+	AzureSubscriptionID      types.String              `tfsdk:"azure_subscription_id"`
+	GcpProjectID             types.String              `tfsdk:"gcp_project_id"`
 }
 
 // ClusterDataSource represents the Terraform schema for the cluster data source.

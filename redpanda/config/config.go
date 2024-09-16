@@ -27,6 +27,9 @@ type Resource struct {
 	ClientSecret           string
 	CloudEnv               string
 	ControlPlaneConnection *grpc.ClientConn
+	RpkPath                string
+	AzureSubscriptionID    string
+	GcpProjectID           string
 }
 
 // Datasource is the config used to pass data and dependencies to data source
@@ -37,6 +40,9 @@ type Datasource struct {
 	ClientSecret           string
 	CloudEnv               string
 	ControlPlaneConnection *grpc.ClientConn
+	RpkPath                string
+	AzureSubscriptionID    string
+	GcpProjectID           string
 }
 
 // TODO add cloud provider and region as values to persist

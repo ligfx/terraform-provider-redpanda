@@ -64,6 +64,10 @@ const (
 	ClientSecretEnv = "REDPANDA_CLIENT_SECRET"
 	// CloudEnvironmentEnv is the Redpanda cloud environment.
 	CloudEnvironmentEnv = "REDPANDA_CLOUD_ENVIRONMENT"
+	// RpkPathEnv is the path to the Redpanda rpk binary.
+	RpkPathEnv = "REDPANDA_RPK_PATH"
+	// defaultRpkPath is the default path to the Redpanda rpk binary.
+	defaultRpkPath = "rpk"
 )
 
 // New spawns a basic provider struct, no client. Configure must be called for a
@@ -90,10 +94,37 @@ func providerSchema() schema.Schema {
 				Sensitive:   true,
 				Description: "Redpanda client secret. You need client_id AND client_secret to use this provider",
 			},
+			"rpk_path": schema.StringAttribute{
+				Optional: true,
+				Description: ("Path to the rpk binary. Used for creating and destroying Redpanda BYOC clusters." +
+					" This can also be sourced from the `REDPANDA_RPK_PATH` environment variable."),
+			},
+			"azure_subscription_id": schema.StringAttribute{
+				Optional: true,
+				Description: ("The default Azure Subscription ID which should be used for Redpanda BYOC clusters." +
+					" If another subscription is specified on a resource, it will take precedence. This can also be" +
+					" sourced from the `ARM_SUBSCRIPTION_ID` environment variable."),
+			},
+			"gcp_project_id": schema.StringAttribute{
+				Optional: true,
+				Description: ("The default Google Cloud Project ID to use for Redpanda BYOC clusters. If another" +
+					" project is specified on a resource, it will take precedence. This can also be sourced from" +
+					" the `GOOGLE_PROJECT` environment variable, or any of the following ordered by precedence:" +
+					" `GOOGLE_PROJECT`, `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, or `CLOUDSDK_CORE_PROJECT`."),
+			},
 		},
 		Description:         "Redpanda Data terraform provider",
 		MarkdownDescription: "Provider configuration",
 	}
+}
+
+func firstNonEmptyString(args ...string) string {
+	for _, arg := range args {
+		if arg != "" {
+			return arg
+		}
+	}
+	return ""
 }
 
 // Configure is the primary entrypoint for terraform and properly initializes
@@ -104,7 +135,7 @@ func (r *Redpanda) Configure(ctx context.Context, request provider.ConfigureRequ
 	if response.Diagnostics.HasError() {
 		return
 	}
-	// Environment variables overrides.
+	// Environment variables
 	id, sec := conf.ClientID.ValueString(), conf.ClientSecret.ValueString()
 	for _, override := range []struct {
 		name string
@@ -125,6 +156,24 @@ func (r *Redpanda) Configure(ctx context.Context, request provider.ConfigureRequ
 			)
 		}
 	}
+	rpkPath := firstNonEmptyString(
+		conf.RpkPath.ValueString(),
+		os.Getenv(RpkPathEnv),
+		defaultRpkPath)
+	// Azure and GCP environment variables are the ones used by their respective
+	// Terraform providers, with the same precedence. This is so if someone is
+	// passing variables to Azure or GCP providers in the same Terraform run
+	// then Redpanda will correctly pick up the variables as well.
+	azureSubscriptionID := firstNonEmptyString(
+		conf.AzureSubscriptionID.ValueString(),
+		os.Getenv("ARM_SUBSCRIPTION_ID"))
+	gcpProjectID := firstNonEmptyString(
+		conf.GcpProjectID.ValueString(),
+		os.Getenv("GOOGLE_PROJECT"),
+		os.Getenv("GOOGLE_CLOUD_PROJECT"),
+		os.Getenv("GCLOUD_PROJECT"),
+		os.Getenv("CLOUDSDK_CORE_PROJECT"))
+
 	// Clients are passed through to downstream resources through the response
 	// struct.
 	token, endpoint, err := cloud.RequestTokenAndEnv(ctx, r.cloudEnv, id, sec)
@@ -147,6 +196,9 @@ func (r *Redpanda) Configure(ctx context.Context, request provider.ConfigureRequ
 		ClientSecret:           sec,
 		CloudEnv:               r.cloudEnv,
 		ControlPlaneConnection: r.conn,
+		RpkPath:                rpkPath,
+		AzureSubscriptionID:    azureSubscriptionID,
+		GcpProjectID:           gcpProjectID,
 	}
 	response.DataSourceData = config.Datasource{
 		AuthToken:              token,
@@ -154,6 +206,9 @@ func (r *Redpanda) Configure(ctx context.Context, request provider.ConfigureRequ
 		ClientSecret:           sec,
 		CloudEnv:               r.cloudEnv,
 		ControlPlaneConnection: r.conn,
+		RpkPath:                rpkPath,
+		AzureSubscriptionID:    azureSubscriptionID,
+		GcpProjectID:           gcpProjectID,
 	}
 }
 

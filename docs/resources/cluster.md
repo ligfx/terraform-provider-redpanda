@@ -28,8 +28,10 @@ Enables the provisioning and management of Redpanda clusters on AWS and GCP. A c
 - `allow_deletion` (Boolean) Allows deletion of the cluster. Defaults to true. Should probably be set to false for production use.
 - `aws_private_link` (Attributes) The AWS Private Link configuration. (see [below for nested schema](#nestedatt--aws_private_link))
 - `azure_private_link` (Attributes) The Azure Private Link configuration. (see [below for nested schema](#nestedatt--azure_private_link))
+- `azure_subscription_id` (String) The Azure Subscription ID to use with a Redpanda BYOC cluster. If it is not provided, the provider Azure subscription id is used.
 - `cloud_provider` (String) Cloud provider where resources are created.
 - `gcp_private_service_connect` (Attributes) The GCP Private Service Connect configuration. (see [below for nested schema](#nestedatt--gcp_private_service_connect))
+- `gcp_project_id` (String) The GCP Project ID to use with a Redpanda BYOC cluster. If it is not provided, the provider GCP project id is used.
 - `http_proxy` (Attributes) HTTP Proxy properties. (see [below for nested schema](#nestedatt--http_proxy))
 - `kafka_api` (Attributes) Cluster's Kafka API properties. (see [below for nested schema](#nestedatt--kafka_api))
 - `read_replica_cluster_ids` (List of String) IDs of clusters which may create read-only topics from this cluster.
