@@ -78,7 +78,7 @@ func TestAreWeDoneYet(t *testing.T) {
 			mockSetup: func(m *mocks.MockOperationServiceClient) {
 				m.EXPECT().GetOperation(gomock.Any(), gomock.Any()).Return(createOpResponse(controlplanev1beta2.Operation_STATE_IN_PROGRESS), nil).AnyTimes()
 			},
-			wantErr: "timeout reached",
+			wantErr: "timed out after 100ms: expected operation to be completed but was in state STATE_IN_PROGRESS",
 		},
 		{
 			name:    "Operation times out with unspecified",
@@ -87,7 +87,7 @@ func TestAreWeDoneYet(t *testing.T) {
 			mockSetup: func(m *mocks.MockOperationServiceClient) {
 				m.EXPECT().GetOperation(gomock.Any(), gomock.Any()).Return(createOpResponse(controlplanev1beta2.Operation_STATE_UNSPECIFIED), nil).AnyTimes()
 			},
-			wantErr: "timeout reached",
+			wantErr: "timed out after 100ms: expected operation to be completed but was in state STATE_UNSPECIFIED",
 		},
 	}
 
