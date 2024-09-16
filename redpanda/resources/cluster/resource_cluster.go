@@ -348,10 +348,10 @@ func (c *Cluster) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 	op := clResp.Operation
-	clusterId := op.GetResourceId()
+	clusterID := op.GetResourceId()
 
 	// write initial state so that if cluster creation fails, we can still track and delete it
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), clusterId)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), clusterID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("allow_deletion"), true)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -498,11 +498,6 @@ func (c *Cluster) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 		return
 	}
 
-	// We need to wait for the cluster to be in a running state before we can delete it
-	_, err := utils.GetClusterUntilRunningState(ctx, 0, 30, model.Name.ValueString(), 1*time.Minute, c.CpCl)
-	if err != nil {
-		return
-	}
 
 	clResp, err := c.CpCl.Cluster.DeleteCluster(ctx, &controlplanev1beta2.DeleteClusterRequest{
 		Id: model.ID.ValueString(),
