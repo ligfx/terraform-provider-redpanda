@@ -21,6 +21,7 @@ import (
 	"reflect"
 
 	controlplanev1beta2 "buf.build/gen/go/redpandadata/cloud/protocolbuffers/go/redpanda/api/controlplane/v1beta2"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -255,6 +256,9 @@ func generateModel(ctx context.Context, cfg models.Cluster, cluster *controlplan
 		ap, dg := types.ListValueFrom(ctx, types.StringType, cluster.AwsPrivateLink.AllowedPrincipals)
 		if dg.HasError() {
 			return nil, fmt.Errorf("failed to parse AWS Private Link: %v", dg)
+		}
+		if ap.IsNull() {
+			ap, dg = types.ListValue(types.StringType, []attr.Value{})
 		}
 		output.AwsPrivateLink = &models.AwsPrivateLink{
 			Enabled:           types.BoolValue(cluster.AwsPrivateLink.Enabled),
