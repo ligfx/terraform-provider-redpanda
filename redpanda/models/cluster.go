@@ -44,6 +44,30 @@ type Cluster struct {
 	ReadReplicaClusterIDs    types.List                `tfsdk:"read_replica_cluster_ids"`
 }
 
+// ClusterDataSource represents the Terraform schema for the cluster data source.
+type ClusterDataSource struct {
+	Name                     types.String              `tfsdk:"name"`
+	ID                       types.String              `tfsdk:"id"`
+	ConnectionType           types.String              `tfsdk:"connection_type"`
+	CloudProvider            types.String              `tfsdk:"cloud_provider"`
+	ClusterType              types.String              `tfsdk:"cluster_type"`
+	RedpandaVersion          types.String              `tfsdk:"redpanda_version"`
+	ThroughputTier           types.String              `tfsdk:"throughput_tier"`
+	Region                   types.String              `tfsdk:"region"`
+	Zones                    types.List                `tfsdk:"zones"`
+	Tags                     types.Map                 `tfsdk:"tags"`
+	ResourceGroupID          types.String              `tfsdk:"resource_group_id"`
+	NetworkID                types.String              `tfsdk:"network_id"`
+	ClusterAPIURL            types.String              `tfsdk:"cluster_api_url"`
+	AwsPrivateLink           *AwsPrivateLink           `tfsdk:"aws_private_link"`
+	GcpPrivateServiceConnect *GcpPrivateServiceConnect `tfsdk:"gcp_private_service_connect"`
+	AzurePrivateLink         *AzurePrivateLink         `tfsdk:"azure_private_link"`
+	KafkaAPI                 *KafkaAPI                 `tfsdk:"kafka_api"`
+	HTTPProxy                *HTTPProxy                `tfsdk:"http_proxy"`
+	SchemaRegistry           *SchemaRegistry           `tfsdk:"schema_registry"`
+	ReadReplicaClusterIDs    types.List                `tfsdk:"read_replica_cluster_ids"`
+}
+
 // AwsPrivateLink represents the Terraform schema for the AWS Private Link configuration.
 type AwsPrivateLink struct {
 	Enabled           types.Bool `tfsdk:"enabled"`

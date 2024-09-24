@@ -65,7 +65,7 @@ func (d *DataSourceCluster) Configure(_ context.Context, req datasource.Configur
 
 // Read reads the Cluster data source's values and updates the state.
 func (d *DataSourceCluster) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var model models.Cluster
+	var model models.ClusterDataSource
 	resp.Diagnostics.Append(req.Config.Get(ctx, &model)...)
 
 	cluster, err := d.CpCl.ClusterForID(ctx, model.ID.ValueString())
@@ -103,7 +103,7 @@ func (d *DataSourceCluster) Read(ctx context.Context, req datasource.ReadRequest
 	}
 
 	// Mapping the fields from the cluster to the Terraform state
-	persist := &models.Cluster{
+	persist := &models.ClusterDataSource{
 		Name:                  types.StringValue(cluster.Name),
 		ConnectionType:        types.StringValue(utils.ConnectionTypeToString(cluster.ConnectionType)),
 		CloudProvider:         types.StringValue(utils.CloudProviderToString(cluster.CloudProvider)),
