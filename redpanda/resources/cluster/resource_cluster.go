@@ -496,6 +496,19 @@ func (c *Cluster) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 		resp.Diagnostics.AddError(fmt.Sprintf("failed to read cluster %s", model.ID), err.Error())
 		return
 	}
+
+	if cluster.GetState() == controlplanev1beta2.Cluster_STATE_DELETING || cluster.GetState() == controlplanev1beta2.Cluster_STATE_DELETING_AGENT {
+		// null out the state, force it to be destroyed and recreated
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning(fmt.Sprintf("cluster %s is in state %s", model.ID.ValueString(), cluster.GetState()), "")
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), model.ID)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("allow_deletion"), true)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("azure_subscription_id"), model.AzureSubscriptionID.ValueString())...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("gcp_project_id"), model.GcpProjectID.ValueString())...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("cloud_provider"), model.CloudProvider)...)
+		return
+	}
+
 	persist, err := generateModel(ctx, model, cluster)
 	if err != nil {
 		resp.Diagnostics.AddError("failed to generate model for state during cluster.Read", err.Error())
